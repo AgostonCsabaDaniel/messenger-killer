@@ -160,17 +160,30 @@ async function prepareDOMForRemoval() {
 
 async function scrollToTopOfChain() {
   const scroller = getScroller();
-  for (let i = 0; i < 15; i += 1) {
+  let lastScrollHeight = scroller.scrollHeight;
+  let stableHeights = 0;
+
+  for (let i = 0; i < 40; i += 1) {
     scroller.scrollTop = 0;
-    await sleep(200);
+    await sleep(300);
+
     const loader = document.querySelector(LOADING_QUERY);
     const atTop = scroller.scrollTop === 0;
     const topOfChain = document.querySelector(TOP_OF_CHAIN_QUERY);
-    if (atTop && topOfChain && !loader) {
+
+    if (scroller.scrollHeight === lastScrollHeight) {
+      stableHeights += 1;
+    } else {
+      stableHeights = 0;
+      lastScrollHeight = scroller.scrollHeight;
+    }
+
+    if (atTop && topOfChain && !loader && stableHeights >= 2) {
       console.log('Reached top of chain before deleting.');
       return true;
     }
   }
+
   console.log('Unable to confirm top of chain after scrolling.');
   return false;
 }
