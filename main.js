@@ -52,7 +52,7 @@ const STATUS = {
   COMPLETE: 'complete',
 };
 
-let DELAY = 5;
+let DELAY = 0;
 const RUNNER_COUNT = 10;
 const DEBUG_MODE = false; // When set, does not actually remove messages.
 const MAX_CLICK_ATTEMPTS = 3; // Skip elements that fail to unsend after this many tries.
@@ -67,14 +67,8 @@ let scrollerCache = null;
 const clickCountPerElement = new Map();
 
 // Helper functions ----------------------------------------------------------
-function getRandom(min, max) {
-  // min and max included
-  return Math.floor(Math.random() * (max - min + 1) + min);
-}
-
 function sleep(ms) {
-  let randomizedSleep = getRandom(ms, ms * 1.33);
-  return new Promise((resolve) => setTimeout(resolve, randomizedSleep));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function reload() {
@@ -145,7 +139,7 @@ async function prepareDOMForRemoval() {
   // Once we know what to remove, start the loading process for new messages
   // just in case we lose the scroller.
   getScroller().scrollTop = 0;
-  await sleep(1000);
+  await sleep(200);
 
   // We cant delete all of the elements because react will crash. Keep the
   // first one.
@@ -153,7 +147,7 @@ async function prepareDOMForRemoval() {
   elementsToRemove.reverse();
   console.log('Removing bad rows from dom: ', elementsToRemove);
   for (let badEl of elementsToRemove) {
-    await sleep(100);
+    await sleep(50);
     let el = badEl;
     try {
       while (el.getAttribute('role') !== 'row') el = el.parentElement;
@@ -162,6 +156,23 @@ async function prepareDOMForRemoval() {
       console.log('Skipping row: could not find the row attribute.');
     }
   }
+}
+
+async function scrollToTopOfChain() {
+  const scroller = getScroller();
+  for (let i = 0; i < 15; i += 1) {
+    scroller.scrollTop = 0;
+    await sleep(200);
+    const loader = document.querySelector(LOADING_QUERY);
+    const atTop = scroller.scrollTop === 0;
+    const topOfChain = document.querySelector(TOP_OF_CHAIN_QUERY);
+    if (atTop && topOfChain && !loader) {
+      console.log('Reached top of chain before deleting.');
+      return true;
+    }
+  }
+  console.log('Unable to confirm top of chain after scrolling.');
+  return false;
 }
 
 async function getAllMessages() {
@@ -190,9 +201,8 @@ async function unsendAllVisibleMessages() {
   const moreButtonsHolders = await getAllMessages();
   console.log('Found hidden menu holders: ', moreButtonsHolders);
 
-  // Reverse list so it steps through messages from bottom and not a seemingly
-  // random position.
-  for (el of moreButtonsHolders.slice().reverse()) {
+  // Iterate in DOM order so we delete from oldest to newest.
+  for (el of moreButtonsHolders.slice()) {
     // Skip elements that have already failed too many times to avoid getting
     // stuck in an infinite loop retrying the same message (#134).
     if ((clickCountPerElement.get(el) ?? 0) >= MAX_CLICK_ATTEMPTS) {
@@ -203,7 +213,7 @@ async function unsendAllVisibleMessages() {
     // Keep current task in view, as to not confuse users, thinking it's not
     // working anymore.
     el.scrollIntoView();
-    await sleep(100);
+    await sleep(50);
 
     // Trigger hover on the row. Also try the inner gridcell if present,
     // since FB attaches the hover listener at that level.
@@ -213,7 +223,7 @@ async function unsendAllVisibleMessages() {
     if (gridcell) {
       gridcell.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
     }
-    await sleep(150);
+    await sleep(75);
 
     // Look for the More button scoped within this row first, then fall back
     // to the global query in case the DOM structure is different.
@@ -237,7 +247,7 @@ async function unsendAllVisibleMessages() {
     clickCountPerElement.set(el, (clickCountPerElement.get(el) ?? 0) + 1);
 
     // Hit the remove button to get the popup.
-    await sleep(500);
+    await sleep(150);
     const removeButton = document.querySelectorAll(REMOVE_BUTTON_QUERY)[0];
     if (!removeButton) {
       console.log('No removeButton found! Skipping holder: ', el);
@@ -248,7 +258,7 @@ async function unsendAllVisibleMessages() {
     removeButton.click();
 
     // Hit unsend on the popup. If we are in debug mode, just log the popup.
-    await sleep(1000);
+    await sleep(250);
     const unsendButton = document.querySelectorAll(
       REMOVE_CONFIRMATION_QUERY,
     )[0];
@@ -272,7 +282,7 @@ async function unsendAllVisibleMessages() {
     } else {
       console.log('Clicking unsend button: ', unsendButton);
       unsendButton.click();
-      await sleep(1800);
+      await sleep(300);
     }
   }
   console.log('Removed all holders.');
@@ -292,24 +302,29 @@ async function unsendAllVisibleMessages() {
   // Invalidate scroller cache between rounds in case the DOM shifted.
   scrollerCache = null;
 
-  // Now see if we need to scroll up.
+  // Now see if we need to scroll down for newer messages.
   const scroller_ = getScroller();
-  const topOfChainText = document.querySelectorAll(TOP_OF_CHAIN_QUERY);
-  await sleep(2000);
-  if (!scroller_ || scroller_.scrollTop === 0) {
-    console.log('Reached top of chain: ', topOfChainText);
+  await sleep(200);
+  if (
+    !scroller_ ||
+    scroller_.scrollTop + scroller_.clientHeight >= scroller_.scrollHeight
+  ) {
+    console.log('Reached bottom of chain. Removal complete.');
     return { status: STATUS.COMPLETE };
   }
 
-  // Scroll up. Wait for the loader.
+  // Scroll down. Wait for the loader.
   // Were done loading when the loading animation is gone, or when the loop
   // waits 5 times (10s).
   let loader = null;
-  scroller_.scrollTop = 0;
+  scroller_.scrollTop = Math.min(
+    scroller_.scrollTop + scroller_.clientHeight,
+    scroller_.scrollHeight,
+  );
 
   for (let i = 0; i < 5; ++i) {
     console.log('Waiting for loading messages to populate...', loader);
-    await sleep(2000);
+    await sleep(400);
     loader = document.querySelector(LOADING_QUERY);
     if (!loader) break;
   }
@@ -374,7 +389,8 @@ async function removeHandler() {
   hijackLog();
   DELAY = localStorage.getItem(delayKey) ?? DELAY;
   console.log('Sleeping to allow the page to load fully...');
-  await sleep(10000); // give the page a bit to fully load.
+  await sleep(2000); // give the page a bit to fully load.
+  await scrollToTopOfChain();
 
   const status = await deleteAllRunner(RUNNER_COUNT);
 
