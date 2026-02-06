@@ -46,6 +46,7 @@ const STATUS = {
 let DELAY = 5;
 const RUNNER_COUNT = 10;
 const DEBUG_MODE = false; // When set, does not actually remove messages.
+const MAX_CLICK_ATTEMPTS = 3; // Skip elements that fail to unsend after this many tries.
 
 const currentURL =
   location.protocol + '//' + location.host + location.pathname;
@@ -75,6 +76,14 @@ function getUnsentMessages() {
   return Array.from(document.querySelectorAll('div')).filter(
     (el) => el.innerText === UNSENT_MESSAGE_INNER_TEXT,
   );
+}
+
+// Returns true if the element is a "You unsent a message" system notification.
+// These cannot be unsent again and should be excluded from unsend targets.
+// See: https://github.com/theahura/shoot-the-messenger/issues/136
+function isUnsentPlaceholder(el) {
+  const text = (el.textContent ?? '').trim();
+  return text === UNSENT_MESSAGE_INNER_TEXT;
 }
 
 function getScroller() {
@@ -138,11 +147,14 @@ async function prepareDOMForRemoval() {
 
 async function getAllMessages() {
   // Get all ... buttons that let you select 'more' for all messages you sent.
+  // Note: getUnsentMessages() is intentionally excluded here — "You unsent a
+  // message" placeholders are system notifications that cannot be unsent again
+  // and would cause infinite retry loops (#136). They are still used in
+  // getScroller() for scroll-parent detection.
   const elementsToUnsend = [
     ...document.querySelectorAll(MY_ROW_QUERY),
     ...document.querySelectorAll(PARTNER_CHAT_QUERY),
-    ...getUnsentMessages(),
-  ];
+  ].filter((el) => !isUnsentPlaceholder(el));
   console.log('Got elements to unsend: ', elementsToUnsend);
   return elementsToUnsend;
 }
@@ -157,6 +169,13 @@ async function unsendAllVisibleMessages() {
   // Reverse list so it steps through messages from bottom and not a seemingly
   // random position.
   for (el of moreButtonsHolders.slice().reverse()) {
+    // Skip elements that have already failed too many times to avoid getting
+    // stuck in an infinite loop retrying the same message (#134).
+    if ((clickCountPerElement.get(el) ?? 0) >= MAX_CLICK_ATTEMPTS) {
+      console.log('Skipping element after', MAX_CLICK_ATTEMPTS, 'failed attempts:', el);
+      continue;
+    }
+
     // Keep current task in view, as to not confuse users, thinking it's not
     // working anymore.
     el.scrollIntoView();
@@ -171,6 +190,9 @@ async function unsendAllVisibleMessages() {
     const moreButton = document.querySelectorAll(MORE_BUTTONS_QUERY)[0];
     if (!moreButton) {
       console.log('No moreButton found! Skipping holder: ', el);
+      // Still increment the click count so this element eventually gets
+      // cleaned up by prepareDOMForRemoval instead of retrying forever (#134).
+      clickCountPerElement.set(el, (clickCountPerElement.get(el) ?? 0) + 1);
       continue;
     }
     console.log('Clicking more button: ', moreButton);
@@ -216,6 +238,18 @@ async function unsendAllVisibleMessages() {
     }
   }
   console.log('Removed all holders.');
+
+  // If every remaining message has exceeded the retry threshold, there is
+  // nothing more we can do on this screen — treat it as complete instead of
+  // looping forever (#134).
+  const remaining = await getAllMessages();
+  const allStuck = remaining.length > 0 && remaining.every(
+    (el) => (clickCountPerElement.get(el) ?? 0) >= MAX_CLICK_ATTEMPTS,
+  );
+  if (allStuck) {
+    console.log('All remaining messages exceeded max unsend attempts. Finishing.');
+    return { status: STATUS.COMPLETE };
+  }
 
   // Now see if we need to scroll up.
   const scroller_ = getScroller();
