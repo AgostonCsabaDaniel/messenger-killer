@@ -6,20 +6,29 @@
 // You're friends on facebook
 // Lives in {city/state}
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=
-TOP_OF_CHAIN_QUERY = '.xsag5q8.xn6708d.x1ye3gou.x1cnzs8';
+// Try multiple selectors: the class-based one may break when FB updates.
+// The image alt fallback looks for the profile header area at the top of chat.
+TOP_OF_CHAIN_QUERY = '.xsag5q8.xn6708d.x1ye3gou.x1cnzs8, [role="main"] [role="img"][aria-label]';
 
 // Remove Queries -------------------------------------------------------------
-MY_ROW_QUERY = '.x78zum5.xdt5ytf.x193iq5w.x1n2onr6.xuk3077:has(> span)'; // Also used for finding the scroller (we just go up to the first parent w/ scrollTop)
+// Use stable role="row" selectors instead of fragile auto-generated class names.
+// Message rows from actual people have __fb-light-mode or __fb-dark-mode class.
+// System rows (joins, adds) don't have these classes.
+MESSAGE_ROW_QUERY = '[role="row"].__fb-light-mode, [role="row"].__fb-dark-mode';
 
-// Partner chat text innerText.
-PARTNER_CHAT_QUERY =
-  '.html-div.x1k4qllp.x6ikm8r.x10wlt62.xerhiuh.x1pn3fxy.x12xxe5f.x1szedp3.x1n2onr6.x1vjfegm.x1mzt3pk.x13faqbe.x1xr0vuk';
+// Fallback: also try to find message rows by the presence of chat theming CSS vars
+MESSAGE_ROW_FALLBACK_QUERY = '[role="row"][style*="--chat-composer-button-color"]';
+
+// Legacy selectors kept as additional fallback for finding the scroller
+MY_ROW_QUERY = '.x78zum5.xdt5ytf.x193iq5w.x1n2onr6.xuk3077:has(> span)';
 
 // In case a user has none of their own messages on screen and only unsent messages, this serves to pick up the scroll parent
 UNSENT_MESSAGE_INNER_TEXT = 'You unsent a message';
 
 // The sideways ellipses used to open the 'remove' menu. Visible on hover.
-MORE_BUTTONS_QUERY = '[role="row"] [aria-hidden="false"] [aria-label="More"]';
+// Removed [aria-hidden="false"] constraint - the buttons start hidden and
+// become visible after hover. We find them within the specific row instead.
+MORE_BUTTONS_QUERY = '[aria-label="More"]';
 
 // The button used to open the remove confirmation dialog.
 REMOVE_BUTTON_QUERY =
@@ -91,9 +100,19 @@ function getScroller() {
 
   let el;
   try {
-    const query = `${MY_ROW_QUERY}, ${PARTNER_CHAT_QUERY}`;
-    el = document.querySelector(query) ?? getUnsentMessages()[0];
-    while (!('scrollTop' in el) || el.scrollTop === 0) {
+    // Try the new role-based selectors first, then legacy class-based ones.
+    el =
+      document.querySelector(MESSAGE_ROW_QUERY) ??
+      document.querySelector(MESSAGE_ROW_FALLBACK_QUERY) ??
+      document.querySelector(MY_ROW_QUERY) ??
+      getUnsentMessages()[0];
+    // Walk up the DOM tree to find the scrollable container.
+    // Use scrollHeight > clientHeight instead of scrollTop === 0 because
+    // scrollTop can be 0 when the user hasn't scrolled yet.
+    while (
+      !('scrollTop' in el) ||
+      el.scrollHeight <= el.clientHeight
+    ) {
       console.log('Traversing tree to find scroller...', el);
       el = el.parentElement;
     }
@@ -151,10 +170,15 @@ async function getAllMessages() {
   // message" placeholders are system notifications that cannot be unsent again
   // and would cause infinite retry loops (#136). They are still used in
   // getScroller() for scroll-parent detection.
-  const elementsToUnsend = [
-    ...document.querySelectorAll(MY_ROW_QUERY),
-    ...document.querySelectorAll(PARTNER_CHAT_QUERY),
-  ].filter((el) => !isUnsentPlaceholder(el));
+  // Prefer role-based selectors; fall back to legacy class-based ones.
+  let elementsToUnsend = [
+    ...document.querySelectorAll(MESSAGE_ROW_QUERY),
+    ...document.querySelectorAll(MESSAGE_ROW_FALLBACK_QUERY),
+  ];
+  if (elementsToUnsend.length === 0) {
+    elementsToUnsend = [...document.querySelectorAll(MY_ROW_QUERY)];
+  }
+  elementsToUnsend = elementsToUnsend.filter((el) => !isUnsentPlaceholder(el));
   console.log('Got elements to unsend: ', elementsToUnsend);
   return elementsToUnsend;
 }
@@ -181,13 +205,22 @@ async function unsendAllVisibleMessages() {
     el.scrollIntoView();
     await sleep(100);
 
-    // Trigger on hover.
+    // Trigger hover on the row. Also try the inner gridcell if present,
+    // since FB attaches the hover listener at that level.
     console.log('Triggering hover on: ', el);
     el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    const gridcell = el.querySelector('[role="gridcell"]');
+    if (gridcell) {
+      gridcell.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    }
     await sleep(150);
 
-    // Get the more button.
-    const moreButton = document.querySelectorAll(MORE_BUTTONS_QUERY)[0];
+    // Look for the More button scoped within this row first, then fall back
+    // to the global query in case the DOM structure is different.
+    let moreButton = el.querySelector(MORE_BUTTONS_QUERY);
+    if (!moreButton) {
+      moreButton = document.querySelectorAll(MORE_BUTTONS_QUERY)[0];
+    }
     if (!moreButton) {
       console.log('No moreButton found! Skipping holder: ', el);
       // Still increment the click count so this element eventually gets
@@ -230,7 +263,12 @@ async function unsendAllVisibleMessages() {
       cancelButton.click();
     } else if (!unsendButton) {
       console.log('No unsendButton found! Skipping holder: ', el);
-      cancelButton.click();
+      if (cancelButton) {
+        cancelButton.click();
+      } else {
+        // Dismiss any open menu/dialog with Escape as a safety fallback.
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      }
     } else {
       console.log('Clicking unsend button: ', unsendButton);
       unsendButton.click();
@@ -251,10 +289,12 @@ async function unsendAllVisibleMessages() {
     return { status: STATUS.COMPLETE };
   }
 
+  // Invalidate scroller cache between rounds in case the DOM shifted.
+  scrollerCache = null;
+
   // Now see if we need to scroll up.
   const scroller_ = getScroller();
   const topOfChainText = document.querySelectorAll(TOP_OF_CHAIN_QUERY);
-  const elementsToUnsend = [...document.querySelectorAll(MY_ROW_QUERY)];
   await sleep(2000);
   if (!scroller_ || scroller_.scrollTop === 0) {
     console.log('Reached top of chain: ', topOfChainText);
