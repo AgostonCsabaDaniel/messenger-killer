@@ -53,7 +53,7 @@ const STATUS = {
 };
 
 let DELAY = 0;
-const RUNNER_COUNT = 10;
+const RUNNER_COUNT = 25;
 const DEBUG_MODE = false; // When set, does not actually remove messages.
 const MAX_CLICK_ATTEMPTS = 3; // Skip elements that fail to unsend after this many tries.
 
@@ -136,11 +136,6 @@ async function prepareDOMForRemoval() {
     }
   }
 
-  // Once we know what to remove, start the loading process for new messages
-  // just in case we lose the scroller.
-  getScroller().scrollTop = 0;
-  await sleep(200);
-
   // We cant delete all of the elements because react will crash. Keep the
   // first one.
   elementsToRemove.shift();
@@ -214,19 +209,14 @@ async function unsendAllVisibleMessages() {
   const moreButtonsHolders = await getAllMessages();
   console.log('Found hidden menu holders: ', moreButtonsHolders);
 
-  // Iterate in DOM order so we delete from oldest to newest.
-  for (el of moreButtonsHolders.slice()) {
+  // Iterate in reverse DOM order so we delete from bottom to top.
+  for (const el of moreButtonsHolders.slice().reverse()) {
     // Skip elements that have already failed too many times to avoid getting
     // stuck in an infinite loop retrying the same message (#134).
     if ((clickCountPerElement.get(el) ?? 0) >= MAX_CLICK_ATTEMPTS) {
       console.log('Skipping element after', MAX_CLICK_ATTEMPTS, 'failed attempts:', el);
       continue;
     }
-
-    // Keep current task in view, as to not confuse users, thinking it's not
-    // working anymore.
-    el.scrollIntoView();
-    await sleep(50);
 
     // Trigger hover on the row. Also try the inner gridcell if present,
     // since FB attaches the hover listener at that level.
@@ -236,7 +226,7 @@ async function unsendAllVisibleMessages() {
     if (gridcell) {
       gridcell.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
     }
-    await sleep(75);
+    await sleep(20);
 
     // Look for the More button scoped within this row first, then fall back
     // to the global query in case the DOM structure is different.
@@ -260,7 +250,7 @@ async function unsendAllVisibleMessages() {
     clickCountPerElement.set(el, (clickCountPerElement.get(el) ?? 0) + 1);
 
     // Hit the remove button to get the popup.
-    await sleep(150);
+    await sleep(60);
     const removeButton = document.querySelectorAll(REMOVE_BUTTON_QUERY)[0];
     if (!removeButton) {
       console.log('No removeButton found! Skipping holder: ', el);
@@ -271,7 +261,7 @@ async function unsendAllVisibleMessages() {
     removeButton.click();
 
     // Hit unsend on the popup. If we are in debug mode, just log the popup.
-    await sleep(250);
+    await sleep(100);
     const unsendButton = document.querySelectorAll(
       REMOVE_CONFIRMATION_QUERY,
     )[0];
@@ -295,7 +285,7 @@ async function unsendAllVisibleMessages() {
     } else {
       console.log('Clicking unsend button: ', unsendButton);
       unsendButton.click();
-      await sleep(300);
+      await sleep(120);
     }
   }
   console.log('Removed all holders.');
@@ -315,29 +305,29 @@ async function unsendAllVisibleMessages() {
   // Invalidate scroller cache between rounds in case the DOM shifted.
   scrollerCache = null;
 
-  // Now see if we need to scroll down for newer messages.
+  // Now see if we need to scroll up for older messages.
   const scroller_ = getScroller();
-  await sleep(200);
-  if (
-    !scroller_ ||
-    scroller_.scrollTop + scroller_.clientHeight >= scroller_.scrollHeight
-  ) {
-    console.log('Reached bottom of chain. Removal complete.');
+  await sleep(100);
+  const loaderNow = document.querySelector(LOADING_QUERY);
+  const atTop = scroller_ && scroller_.scrollTop === 0;
+  const topOfChain = document.querySelector(TOP_OF_CHAIN_QUERY);
+  if (!scroller_ || (atTop && topOfChain && !loaderNow)) {
+    console.log('Reached top of chain. Removal complete.');
     return { status: STATUS.COMPLETE };
   }
 
-  // Scroll down. Wait for the loader.
+  // Scroll up. Wait for the loader.
   // Were done loading when the loading animation is gone, or when the loop
   // waits 5 times (10s).
   let loader = null;
-  scroller_.scrollTop = Math.min(
-    scroller_.scrollTop + scroller_.clientHeight,
-    scroller_.scrollHeight,
+  scroller_.scrollTop = Math.max(
+    scroller_.scrollTop - scroller_.clientHeight,
+    0,
   );
 
   for (let i = 0; i < 5; ++i) {
     console.log('Waiting for loading messages to populate...', loader);
-    await sleep(400);
+    await sleep(200);
     loader = document.querySelector(LOADING_QUERY);
     if (!loader) break;
   }
@@ -403,7 +393,6 @@ async function removeHandler() {
   DELAY = localStorage.getItem(delayKey) ?? DELAY;
   console.log('Sleeping to allow the page to load fully...');
   await sleep(2000); // give the page a bit to fully load.
-  await scrollToTopOfChain();
 
   const status = await deleteAllRunner(RUNNER_COUNT);
 
