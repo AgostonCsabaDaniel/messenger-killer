@@ -48,3 +48,27 @@ If you want the latest version, you can git clone the repo and install it as an 
 - While for the most part unsending messages does not result in notifications for the other party, some iPhone users reported getting a lot of notifications as messages were being removed. The content of the message was not present. Specifically, I've had friends with Messenger v291.2+ on iPhone getting notifications when messages are removed. Unfortunately, because of the nature of Shoot the Messenger, this can result in a lot of inadvertent spam sent to Facebook friends. See this issue for more: https://github.com/theahura/shoot-the-messenger/issues/58#issuecomment-1064502975
 - not all messages can be unsent. For example, I've been unable to remove some messages with links in them, and stickers give a lot of trouble. This isn't a problem with the extension, so much as a problem with Facebooks removal backend. This seems to happen more with older messages.
 - facebook constantly runs A/B tests, some of which may break this extension. File an issue if something weird happens -- or more likely, doesn't happen.
+
+## Android App (experimental)
+
+Az Android port most **Accessibility Service** alapon működik, tehát a natív Messenger app UI-ját kezeli (nem WebView-t).
+
+### Működés
+
+A szolgáltatás a Messenger beszélgetésben a jobb oldali (küldött) üzenet-buborékokat keresi, majd:
+1. Hosszú nyomás az üzeneten
+2. **Visszavonás** kiválasztása
+3. **Visszavonás mindenkinél** kiválasztása
+
+### Build & run
+
+1. Nyisd meg az `android-app/` mappát Android Studio-ban.
+2. Buildeld és telepítsd az appot.
+3. Az appban nyisd meg az Accessibility beállításokat és engedélyezd a szolgáltatást.
+4. Nyisd meg a Messengert és a cél beszélgetést.
+5. Az appban állíts delay-t, majd Start.
+
+### Megjegyzés
+
+- Kísérleti megoldás: Messenger UI változás esetén a keresési logika finomhangolása szükséges lehet.
+

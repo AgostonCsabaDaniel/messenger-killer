@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Shoot the Messenger</string>
+    <string name="instructions">1) Kapcsold be az Accessibility szolgáltatást.\n2) Nyisd meg a Messengert és a beszélgetést.\n3) Nyomj Start-ot. Az app a jobb oldali (küldött) üzenetekre hosszút nyom, majd kiválasztja: Visszavonás → Visszavonás mindenkinél.</string>
+    <string name="open_accessibility">Accessibility beállítások megnyitása</string>
+    <string name="open_messenger">Messenger megnyitása</string>
+    <string name="delay_hint">Lépésköz (ms), pl. 1200</string>
+    <string name="start">Start</string>
+    <string name="stop">Stop</string>
+    <string name="status_running">Állapot: fut</string>
+    <string name="status_stopped">Állapot: leállítva</string>
+    <string name="messenger_not_installed">A Messenger app nincs telepítve.</string>
+</resources>
