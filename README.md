@@ -68,6 +68,21 @@ A szolgáltatás a Messenger beszélgetésben a jobb oldali (küldött) üzenet-
 4. Nyisd meg a Messengert és a cél beszélgetést.
 5. Az appban állíts delay-t, majd Start.
 
+### APK készítése (parancssorból)
+
+Az alábbi paranccsal elkészíthető egy telepíthető **debug APK**:
+
+```bash
+cd android-app
+ANDROID_HOME=/opt/android-sdk JAVA_HOME=$HOME/.local/share/mise/installs/java/17.0.2 gradle :app:assembleDebug --no-daemon
+```
+
+A kész fájl helye:
+
+```
+android-app/app/build/outputs/apk/debug/app-debug.apk
+```
+
 ### Megjegyzés
 
 - Kísérleti megoldás: Messenger UI változás esetén a keresési logika finomhangolása szükséges lehet.
