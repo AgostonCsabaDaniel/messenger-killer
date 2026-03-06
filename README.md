@@ -48,3 +48,20 @@ If you want the latest version, you can git clone the repo and install it as an 
 - While for the most part unsending messages does not result in notifications for the other party, some iPhone users reported getting a lot of notifications as messages were being removed. The content of the message was not present. Specifically, I've had friends with Messenger v291.2+ on iPhone getting notifications when messages are removed. Unfortunately, because of the nature of Shoot the Messenger, this can result in a lot of inadvertent spam sent to Facebook friends. See this issue for more: https://github.com/theahura/shoot-the-messenger/issues/58#issuecomment-1064502975
 - not all messages can be unsent. For example, I've been unable to remove some messages with links in them, and stickers give a lot of trouble. This isn't a problem with the extension, so much as a problem with Facebooks removal backend. This seems to happen more with older messages.
 - facebook constantly runs A/B tests, some of which may break this extension. File an issue if something weird happens -- or more likely, doesn't happen.
+
+## Android App (experimental)
+
+This repository now includes an Android WebView wrapper in `android-app/` that runs Messenger in-app and injects a lightweight unsend automation script.
+
+### Build & run
+
+1. Open `android-app/` in Android Studio (Jellyfish or newer recommended).
+2. Let Gradle sync.
+3. Run the `app` configuration on a device/emulator.
+4. Sign in to Messenger inside the app, open a thread, then tap **Remove messages**.
+
+### Notes
+
+- This is an **experimental port** of the Chrome extension behavior.
+- Because Messenger UI changes frequently, selector updates may still be required.
+- Keep the app in foreground while removal is running.
