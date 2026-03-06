@@ -51,17 +51,24 @@ If you want the latest version, you can git clone the repo and install it as an 
 
 ## Android App (experimental)
 
-This repository now includes an Android WebView wrapper in `android-app/` that runs Messenger in-app and injects a lightweight unsend automation script.
+Az Android port most **Accessibility Service** alapon működik, tehát a natív Messenger app UI-ját kezeli (nem WebView-t).
+
+### Működés
+
+A szolgáltatás a Messenger beszélgetésben a jobb oldali (küldött) üzenet-buborékokat keresi, majd:
+1. Hosszú nyomás az üzeneten
+2. **Visszavonás** kiválasztása
+3. **Visszavonás mindenkinél** kiválasztása
 
 ### Build & run
 
-1. Open `android-app/` in Android Studio (Jellyfish or newer recommended).
-2. Let Gradle sync.
-3. Run the `app` configuration on a device/emulator.
-4. Sign in to Messenger inside the app, open a thread, then tap **Remove messages**.
+1. Nyisd meg az `android-app/` mappát Android Studio-ban.
+2. Buildeld és telepítsd az appot.
+3. Az appban nyisd meg az Accessibility beállításokat és engedélyezd a szolgáltatást.
+4. Nyisd meg a Messengert és a cél beszélgetést.
+5. Az appban állíts delay-t, majd Start.
 
-### Notes
+### Megjegyzés
 
-- This is an **experimental port** of the Chrome extension behavior.
-- Because Messenger UI changes frequently, selector updates may still be required.
-- Keep the app in foreground while removal is running.
+- Kísérleti megoldás: Messenger UI változás esetén a keresési logika finomhangolása szükséges lehet.
+
