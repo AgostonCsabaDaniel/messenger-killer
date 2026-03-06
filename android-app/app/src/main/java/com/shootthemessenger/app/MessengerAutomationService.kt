@@ -40,7 +40,7 @@ class MessengerAutomationService : AccessibilityService() {
                     }, 350)
                 }, 350)
                 handler.postDelayed({
-                    performGlobalAction(GLOBAL_ACTION_SCROLL_BACKWARD)
+                    performGlobalAction(GLOBAL_ACTION_BACK)
                 }, delayMs)
             }
         }
